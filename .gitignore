@@ -22,12 +22,13 @@ tmp/
 .vscode
 .idea
 
-# .env file
-.env
+# Environment files
+*.env
+*.env.*
 
 # Project build
 main
-*templ.go
+*.templ.go
 
 # OS X generated file
 .DS_Store
