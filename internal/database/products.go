@@ -2,6 +2,8 @@ package database
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joshuatakyi/shop/internal/models"
@@ -78,7 +80,7 @@ func ListProducts(c echo.Context) error {
 	start := time.Now()
 	ctx := c.Request().Context()
 	page := 1
-	limit := 10
+	limit := 12
 
 	// Parse query parameters
 	if pageParam := c.QueryParam("page"); pageParam != "" {
@@ -327,79 +329,233 @@ func DeleteProduct(c echo.Context) error {
 	})
 }
 
-// func DeleteProductImage(c echo.Context) error {
-// 	ctx := c.Request().Context()
-// 	// Retrieve the user's role from the context and ensure only admins can delete images
-// 	role, ok := c.Get("role").(string)
-// 	if !ok || role == "" {
-// 		c.Logger().Error("Failed to retrieve role from context")
-// 		return c.JSON(500, echo.Map{
-// 			"message": "Internal server error",
-// 		})
-// 	}
-// 	if role != "admin" {
-// 		c.Logger().Error("Unauthorized access attempt")
-// 		return c.JSON(403, echo.Map{
-// 			"message": "Forbidden: You do not have permission to perform this action",
-// 		})
-// 	}
+// FilterProducts handles complex product filtering with multiple criteria
+func FilterProducts(c echo.Context) error {
+	ctx := c.Request().Context()
 
-// 	// Get the product ID from the URL parameter
-// 	paramId := c.Param("id")
-// 	if paramId == "" {
-// 		c.Logger().Error("Product ID is required")
-// 		return c.JSON(400, echo.Map{
-// 			"message": "Product ID is required",
-// 		})
-// 	}
+	// Initialize default pagination parameters
+	page := 1
+	limit := 12
 
-// 	// Convert the product ID from string to MongoDB ObjectID
-// 	convertedId, err := primitive.ObjectIDFromHex(paramId)
-// 	if err != nil {
-// 		c.Logger().Error("Failed to convert product ID: ", err)
-// 		return c.JSON(400, echo.Map{
-// 			"message": "Invalid product ID format",
-// 			"error":   err.Error(),
-// 		})
-// 	}
+	// Parse pagination parameters
+	if pageParam := c.QueryParam("page"); pageParam != "" {
+		fmt.Sscanf(pageParam, "%d", &page)
+		if page < 1 {
+			page = 1
+		}
+	}
 
-// 	shopRepo := models.NewMongoClient(server.Client)
-// 	// Retrieve the product by its ID
-// 	product, err := shopRepo.GetProductByID(ctx, convertedId)
-// 	if err != nil {
-// 		c.Logger().Error("Failed to retrieve product: ", err)
-// 		if err.Error() == "product not found" {
-// 			return c.JSON(404, echo.Map{
-// 				"message": "Product not found",
-// 			})
-// 		}
-// 		return c.JSON(500, echo.Map{
-// 			"message": "Internal server error",
-// 		})
-// 	}
+	if limitParam := c.QueryParam("limit"); limitParam != "" {
+		fmt.Sscanf(limitParam, "%d", &limit)
+		if limit < 1 {
+			limit = 10
+		} else if limit > 100 {
+			limit = 100 // Cap maximum limit
+		}
+	}
 
-// 	// Check if the product has images to delete
-// 	if len(product.Images) == 0 {
-// 		c.Logger().Warn("No images found for product")
-// 		return c.JSON(404, echo.Map{
-// 			"message": "No images found for this product",
-// 		})
-// 	}
+	// Start building the filter based on query parameters
+	filterParams := make(map[string]interface{})
 
-// 	// For demonstration, delete all images associated with the product.
-// 	// You may want to modify this to delete a specific image by image ID.
-// 	for _, img := range product.Images {
-// 		if err := shopRepo.DeleteImage(ctx, product.ID, img.Id); err != nil {
-// 			c.Logger().Error("Failed to delete product image: ", err)
-// 			return c.JSON(500, echo.Map{
-// 				"message": "Internal server error",
-// 				"error":   err.Error(),
-// 			})
-// 		}
-// 	}
+	// Handle search term - support both 'q' and 'search' parameters
+	searchQuery := c.QueryParam("q")
+	if searchQuery == "" {
+		// Fall back to 'search' parameter if 'q' is not provided
+		searchQuery = c.QueryParam("search")
+	}
+	if searchQuery != "" {
+		filterParams["search"] = searchQuery
+	}
 
-// 	// Return a success response after deleting images
-// 	return c.JSON(200, echo.Map{
-// 		"message": "Product images deleted successfully",
-// 	})
-// }
+	// Handle category filtering
+	if category := c.QueryParam("category"); category != "" {
+		// Check if it's a comma-separated list
+		categories := strings.Split(category, ",")
+		if len(categories) > 1 {
+			filterParams["category"] = categories
+		} else {
+			filterParams["category"] = category
+		}
+	}
+
+	// Handle price range filtering
+	if minPrice := c.QueryParam("min_price"); minPrice != "" {
+		if price, err := strconv.ParseFloat(minPrice, 64); err == nil {
+			filterParams["price_min"] = price
+		}
+	}
+
+	if maxPrice := c.QueryParam("max_price"); maxPrice != "" {
+		if price, err := strconv.ParseFloat(maxPrice, 64); err == nil {
+			filterParams["price_max"] = price
+		}
+	}
+
+	// Handle tags filtering
+	if tags := c.QueryParam("tags"); tags != "" {
+		tagsList := strings.Split(tags, ",")
+		if len(tagsList) > 0 {
+			filterParams["tags"] = tagsList
+		}
+	}
+
+	// Handle models filtering
+	if models := c.QueryParam("models"); models != "" {
+		modelsList := strings.Split(models, ",")
+		if len(modelsList) > 0 {
+			filterParams["models"] = modelsList
+		}
+	}
+
+	// Handle colors filtering
+	if colors := c.QueryParam("colors"); colors != "" {
+		colorsList := strings.Split(colors, ",")
+		if len(colorsList) > 0 {
+			filterParams["colors"] = colorsList
+		}
+	}
+
+	// Handle materials filtering
+	if materials := c.QueryParam("materials"); materials != "" {
+		materialsList := strings.Split(materials, ",")
+		if len(materialsList) > 0 {
+			filterParams["materials"] = materialsList
+		}
+	}
+
+	// Handle boolean filters
+	if isAvailable := c.QueryParam("is_available"); isAvailable != "" {
+		if val, err := strconv.ParseBool(isAvailable); err == nil {
+			filterParams["is_available"] = val
+		}
+	}
+
+	if isNew := c.QueryParam("is_new"); isNew != "" {
+		if val, err := strconv.ParseBool(isNew); err == nil {
+			filterParams["is_new"] = val
+		}
+	}
+
+	if isOnSale := c.QueryParam("is_on_sale"); isOnSale != "" {
+		if val, err := strconv.ParseBool(isOnSale); err == nil {
+			filterParams["is_on_sale"] = val
+		}
+	}
+
+	if isFeatured := c.QueryParam("is_featured"); isFeatured != "" {
+		if val, err := strconv.ParseBool(isFeatured); err == nil {
+			filterParams["is_featured"] = val
+		}
+	}
+
+	if isBestSeller := c.QueryParam("is_best_seller"); isBestSeller != "" {
+		if val, err := strconv.ParseBool(isBestSeller); err == nil {
+			filterParams["is_best_seller"] = val
+		}
+	}
+
+	// Handle sorting
+	if sortBy := c.QueryParam("sort_by"); sortBy != "" {
+		filterParams["sort_by"] = sortBy
+
+		if sortDir := c.QueryParam("sort_dir"); sortDir != "" {
+			filterParams["sort_dir"] = sortDir
+		}
+	}
+
+	// Log the filter parameters for debugging
+	c.Logger().Debugf("Filter parameters: %+v", filterParams)
+
+	// Fetch filtered products
+	shopRepo := models.NewMongoClient(server.Client)
+	products, totalCount, err := shopRepo.FilterProducts(ctx, filterParams, page, limit)
+	if err != nil {
+		c.Logger().Errorf("Failed to filter products: %v", err)
+		return c.JSON(500, echo.Map{
+			"success": false,
+			"message": "Failed to retrieve products",
+			"error":   err.Error(),
+		})
+	}
+
+	// Calculate total pages for pagination info
+	totalPages := (totalCount + limit - 1) / limit
+
+	// Get the search query for message formatting
+	var searchQueryForMessage string
+	if q, ok := filterParams["search"].(string); ok && q != "" {
+		searchQueryForMessage = q
+	}
+
+	// Create message based on whether this is a search or not
+	var message string
+	if searchQueryForMessage != "" {
+		message = fmt.Sprintf("Found %d products matching '%s'", totalCount, searchQueryForMessage)
+	} else {
+		message = "Products filtered successfully"
+	}
+
+	// Return results with improved metadata
+	return c.JSON(200, echo.Map{
+		"success": true,
+		"message": message,
+		"data": map[string]interface{}{
+			"products":   products,
+			"totalCount": totalCount,
+			"totalPages": totalPages,
+			"page":       page,
+			"limit":      limit,
+			"query":      searchQueryForMessage,
+		},
+	})
+}
+
+func GetSimilarProducts(c echo.Context) error {
+	ctx := c.Request().Context()
+	type requestBody struct {
+		Id string `json:"id"` // Changed to string to properly bind from JSON
+	}
+
+	var reqBody requestBody
+	if err := c.Bind(&reqBody); err != nil {
+		return c.JSON(400, echo.Map{
+			"message": "Invalid request body",
+		})
+	}
+
+	// Make sure we have an ID
+	if reqBody.Id == "" {
+		return c.JSON(400, echo.Map{
+			"message": "Product ID is required",
+		})
+	}
+
+	// Convert the string ID to ObjectID
+	convertedId, err := primitive.ObjectIDFromHex(reqBody.Id)
+	if err != nil {
+		c.Logger().Error("Failed to convert product ID: ", err)
+		return c.JSON(400, echo.Map{
+			"message": "Invalid product ID format",
+			"error":   err.Error(),
+		})
+	}
+	shopRepo := models.NewMongoClient(server.Client)
+	similarProducts, err := shopRepo.GetSimilarProducts(ctx, convertedId)
+	if err != nil {
+		c.Logger().Error("Failed to retrieve similar products: ", err)
+		if err.Error() == "product not found" {
+			return c.JSON(404, echo.Map{
+				"message": "Product not found",
+			})
+		}
+		return c.JSON(500, echo.Map{
+			"message": "Internal server error",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(200, echo.Map{
+		"message":  "Similar products retrieved successfully",
+		"products": similarProducts,
+	})
+}

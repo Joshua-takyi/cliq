@@ -25,7 +25,9 @@ require (
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mitchellh/mapstructure v0.0.0-20170125051937-db1efb556f84 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
+	github.com/rpip/paystack-go v0.0.0-20210725234520-196191f8ab58 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect

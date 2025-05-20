@@ -75,7 +75,8 @@ func UpdateCart(c echo.Context) error {
 	// Create a struct to capture both cart item and action
 	type CartUpdateRequest struct {
 		models.CartItem
-		Action string `json:"action"`
+		Action     string `json:"action"`
+		Product_Id string `json:"product_Id"` // Add field to capture the frontend's camelCase version
 	}
 
 	var updateReq CartUpdateRequest
@@ -85,6 +86,22 @@ func UpdateCart(c echo.Context) error {
 			"message": "Invalid input",
 			"error":   err.Error(),
 		})
+	}
+
+	// Log the request for debugging
+	c.Logger().Info("Request data: ", updateReq)
+
+	// Convert the product_Id to ProductID if needed
+	if updateReq.CartItem.ProductID.IsZero() && updateReq.Product_Id != "" {
+		productID, err := primitive.ObjectIDFromHex(updateReq.Product_Id)
+		if err != nil {
+			c.Logger().Error("Failed to convert product_Id to ObjectID: ", err)
+			return c.JSON(400, echo.Map{
+				"message": "Invalid product_Id",
+				"error":   err.Error(),
+			})
+		}
+		updateReq.CartItem.ProductID = productID
 	}
 
 	shopRepo := models.NewMongoClient(server.Client)
@@ -162,6 +179,12 @@ func GetUserCart(c echo.Context) error {
 		})
 	}
 
+	// Ensure we're not returning a cart with a zero ID
+	if cart.ID.IsZero() {
+		// Generate a new ID for the cart if it's zero (temporary ID for frontend)
+		cart.ID = primitive.NewObjectID()
+	}
+
 	return c.JSON(200, cart)
 }
 
@@ -234,12 +257,12 @@ func RemoveCartItem(c echo.Context) error {
 		})
 	}
 
-	// Convert product ID from request
-	productObjectId, err := primitive.ObjectIDFromHex(requestBody.Id)
+	// Convert cart item ID from request
+	cartItemObjectId, err := primitive.ObjectIDFromHex(requestBody.Id)
 	if err != nil {
-		c.Logger().Error("Failed to convert product ID: ", err)
+		c.Logger().Error("Failed to convert cart item ID: ", err)
 		return c.JSON(400, echo.Map{
-			"message": "Invalid product ID format",
+			"message": "Invalid cart item ID format",
 			"error":   err.Error(),
 		})
 	}
@@ -257,7 +280,7 @@ func RemoveCartItem(c echo.Context) error {
 	shopRepo := models.NewMongoClient(server.Client)
 
 	// Call the model's RemoveCartItem method
-	err = shopRepo.RemoveCartItem(ctx, userObjectId, productObjectId)
+	err = shopRepo.RemoveCartItem(ctx, userObjectId, cartItemObjectId)
 	if err != nil {
 		c.Logger().Error("Failed to remove item from cart: ", err)
 		return c.JSON(500, echo.Map{

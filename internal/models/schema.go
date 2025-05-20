@@ -103,10 +103,15 @@ type Cart struct {
 }
 
 type CartItem struct {
+	ID         primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	ProductID  primitive.ObjectID `json:"product_id" bson:"productid,omitempty" validate:"required"` // Changed field tag to match DB
 	Quantity   int                `json:"quantity" bson:"quantity" validate:"required,min=1"`
 	Color      string             `json:"color,omitempty" bson:"color" validate:"required"`
+	Image      string             `json:"image" bson:"image"`
+	Slug       string             `json:"slug" bson:"slug"`
+	Title      string             `json:"title" bson:"title"`
 	Price      float64            `json:"price" bson:"price"`
+	Model      string             `json:"model,omitempty" bson:"model"`
 	TotalPrice float64            `json:"total_price" bson:"totalprice"` // Changed field tag to match DB
 }
 
@@ -149,7 +154,8 @@ type ShopCalls interface {
 	UpdateProduct(ctx context.Context, id primitive.ObjectID, product map[string]interface{}) (string, error)
 	DeleteProduct(ctx context.Context, id primitive.ObjectID) error
 	ListProducts(ctx context.Context, page, limit int, filter map[string]interface{}) ([]Product, int64, error)
-
+	BuildQuery(ctx context.Context, filter map[string]interface{}) (primitive.M, error)
+	GetSimilarProducts(ctx context.Context, product primitive.ObjectID) ([]Product, error)
 	// Comment Operations
 	AddComment(ctx context.Context, comment Comments, userId string, productId primitive.ObjectID) error
 	GetCommentsByProductID(ctx context.Context, productID primitive.ObjectID) ([]Comments, error)
@@ -161,7 +167,7 @@ type ShopCalls interface {
 	GetUserCart(ctx context.Context, userID primitive.ObjectID) (*Cart, error)
 	AddToCart(ctx context.Context, userID primitive.ObjectID, item CartItem) error
 	UpdateCartItem(ctx context.Context, userID primitive.ObjectID, item CartItem, actions CartActions) error
-	RemoveCartItem(ctx context.Context, userID primitive.ObjectID, productID primitive.ObjectID) error
+	RemoveCartItem(ctx context.Context, userID primitive.ObjectID, cartItemID primitive.ObjectID) error
 	ClearCart(ctx context.Context, userID primitive.ObjectID) error
 
 	// Order Operations

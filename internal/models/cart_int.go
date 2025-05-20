@@ -47,6 +47,23 @@ func (m *MongoClient) AddToCart(ctx context.Context, userID primitive.ObjectID, 
 	}
 	item.TotalPrice = math.Round(item.Price*float64(item.Quantity)*100) / 100
 
+	// Set image and slug from product (ensure these are available for all cart items)
+	if item.Image == "" && len(product.Images) > 0 {
+		item.Image = product.Images[0]
+	}
+	if item.Title == "" {
+		item.Title = product.Title
+
+	}
+	if item.Slug == "" {
+		item.Slug = product.Slug
+	}
+
+	// Generate a unique ID for the cart item if it doesn't have one
+	if item.ID.IsZero() {
+		item.ID = primitive.NewObjectID()
+	}
+
 	// Start a session for transaction
 	session, err := m.client.StartSession()
 	if err != nil {
@@ -64,6 +81,7 @@ func (m *MongoClient) AddToCart(ctx context.Context, userID primitive.ObjectID, 
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				cart = Cart{
+					ID:          primitive.NewObjectID(),
 					UserID:      userID,
 					Items:       []CartItem{item},
 					TotalAmount: item.TotalPrice, // This is correct as it's the only item
@@ -79,15 +97,30 @@ func (m *MongoClient) AddToCart(ctx context.Context, userID primitive.ObjectID, 
 		// Check if item already exists in cart
 		itemExists := false
 		for i, cartItem := range cart.Items {
-			if cartItem.ProductID == item.ProductID && cartItem.Color == item.Color {
+			// Compare by product ID, color, and model to find matching items
+			if cartItem.ProductID == item.ProductID && cartItem.Color == item.Color && cartItem.Model == item.Model {
 				// Update item quantity and total price
 				cart.Items[i].Quantity += item.Quantity
 				cart.Items[i].TotalPrice = math.Round(cart.Items[i].Price*float64(cart.Items[i].Quantity)*100) / 100 // Added proper rounding
+
+				// Make sure image and slug are populated for matched item if needed
+				if cart.Items[i].Image == "" && len(product.Images) > 0 {
+					cart.Items[i].Image = product.Images[0]
+				}
+				if cart.Items[i].Title == "" {
+					cart.Items[i].Title = product.Title
+				}
+				if cart.Items[i].Slug == "" {
+					cart.Items[i].Slug = product.Slug
+				}
+
+				// Keep the existing item ID (don't overwrite with the new item ID)
+				// This ensures that each item maintains its unique identity
+
 				itemExists = true
 				break
 			}
 		}
-
 		// If item doesn't exist in cart, add it
 		if !itemExists {
 			cart.Items = append(cart.Items, item)
@@ -173,6 +206,14 @@ func (m *MongoClient) UpdateCartItem(ctx context.Context, userID primitive.Objec
 				}
 				item.TotalPrice = math.Round(item.Price*float64(item.Quantity)*100) / 100
 
+				// Set image and slug from product
+				if item.Image == "" && len(product.Images) > 0 {
+					item.Image = product.Images[0]
+				}
+				if item.Slug == "" {
+					item.Slug = product.Slug
+				}
+
 				cart = Cart{
 					UserID:      userID,
 					Items:       []CartItem{item},
@@ -189,7 +230,7 @@ func (m *MongoClient) UpdateCartItem(ctx context.Context, userID primitive.Objec
 		// Find the item in the cart
 		itemFound := false
 		for i, cartItem := range cart.Items {
-			if cartItem.ProductID == item.ProductID && cartItem.Color == item.Color {
+			if cartItem.ProductID == item.ProductID && cartItem.Color == item.Color && cartItem.Model == item.Model {
 				// Handle increment/decrement actions
 				if actions.Increment {
 					cart.Items[i].Quantity++
@@ -215,6 +256,15 @@ func (m *MongoClient) UpdateCartItem(ctx context.Context, userID primitive.Objec
 
 				// Update the total price for this item with proper rounding
 				cart.Items[i].TotalPrice = math.Round(cart.Items[i].Price*float64(cart.Items[i].Quantity)*100) / 100
+
+				// Make sure image and slug are populated for the updated item if needed
+				if cart.Items[i].Image == "" && len(product.Images) > 0 {
+					cart.Items[i].Image = product.Images[0]
+				}
+				if cart.Items[i].Slug == "" {
+					cart.Items[i].Slug = product.Slug
+				}
+
 				itemFound = true
 				break
 			}
@@ -234,6 +284,14 @@ func (m *MongoClient) UpdateCartItem(ctx context.Context, userID primitive.Objec
 					item.Price = math.Round((product.Price-discountAmount)*100) / 100
 				}
 				item.TotalPrice = math.Round(item.Price*float64(item.Quantity)*100) / 100
+
+				// Set image and slug from product
+				if item.Image == "" && len(product.Images) > 0 {
+					item.Image = product.Images[0]
+				}
+				if item.Slug == "" {
+					item.Slug = product.Slug
+				}
 
 				cart.Items = append(cart.Items, item)
 				itemFound = true
@@ -277,7 +335,7 @@ func (m *MongoClient) UpdateCartItem(ctx context.Context, userID primitive.Objec
 	return nil
 }
 
-func (m *MongoClient) RemoveCartItem(ctx context.Context, userID primitive.ObjectID, productID primitive.ObjectID) error {
+func (m *MongoClient) RemoveCartItem(ctx context.Context, userID primitive.ObjectID, cartItemID primitive.ObjectID) error {
 	if m.client == nil {
 		return fmt.Errorf("MongoDB client is not initialized")
 	}
@@ -304,47 +362,18 @@ func (m *MongoClient) RemoveCartItem(ctx context.Context, userID primitive.Objec
 			return nil, fmt.Errorf("error finding cart: %v", err)
 		}
 
-		// Find and remove the item from cart items
+		// Find the item in the cart by its unique ID
 		foundIndex := -1
 		for i, item := range cart.Items {
-			// Check both ProductID and productid field (to handle database inconsistency)
-			if item.ProductID == productID {
+			if item.ID == cartItemID {
 				foundIndex = i
 				break
 			}
 		}
 
-		// If item not found by ProductID, check if we need to use raw BSON to inspect the document
+		// If item not found, return error
 		if foundIndex == -1 {
-			// Log the items for debugging
-			for i, item := range cart.Items {
-				// Log the item details to help diagnose the issue
-				fmt.Printf("Item %d: ProductID=%v, Quantity=%d, Color=%s\n",
-					i, item.ProductID, item.Quantity, item.Color)
-			}
-
-			// Get the raw document to check field names
-			var rawCart bson.M
-			if err := cartColRef.FindOne(sessCtx, filter).Decode(&rawCart); err == nil {
-				if items, ok := rawCart["items"].([]interface{}); ok {
-					for i, rawItem := range items {
-						if item, ok := rawItem.(bson.M); ok {
-							// Check if the item uses "productid" instead of "product_id"
-							if pid, exists := item["productid"]; exists {
-								if pidObj, ok := pid.(primitive.ObjectID); ok && pidObj == productID {
-									foundIndex = i
-									break
-								}
-							}
-						}
-					}
-				}
-			}
-
-			// If still not found, return error
-			if foundIndex == -1 {
-				return nil, fmt.Errorf("item not found in cart")
-			}
+			return nil, fmt.Errorf("item with ID %s not found in cart", cartItemID.Hex())
 		}
 
 		// Remove item from the slice
@@ -441,14 +470,24 @@ func (m *MongoClient) GetUserCart(ctx context.Context, userID primitive.ObjectID
 	err := cartColRef.FindOne(ctx, filter).Decode(&cart)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			// Return an empty cart if none exists
-			return &Cart{
+			// Create a new cart with a generated ID when none exists
+			newCart := Cart{
+				ID:          primitive.NewObjectID(), // Explicitly generate a new Object ID
 				UserID:      userID,
 				Items:       []CartItem{},
 				TotalAmount: 0,
 				CreatedAt:   time.Now(),
 				UpdatedAt:   time.Now(),
-			}, nil
+			}
+
+			// Insert the new cart into the database
+			_, insertErr := cartColRef.InsertOne(ctx, newCart)
+			if insertErr != nil {
+				return nil, fmt.Errorf("failed to create new cart: %v", insertErr)
+			}
+
+			// Return the newly created and persisted cart
+			return &newCart, nil
 		}
 		return nil, fmt.Errorf("failed to retrieve cart: %v", err)
 	}

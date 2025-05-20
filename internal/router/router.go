@@ -7,6 +7,7 @@ import (
 
 	"github.com/joshuatakyi/shop/internal/database"
 	"github.com/joshuatakyi/shop/internal/middleware"
+	"github.com/joshuatakyi/shop/internal/models"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 )
@@ -44,12 +45,12 @@ func Router() *echo.Echo {
 
 	// Public routes for products
 	v1.GET("/products", database.ListProducts)
-	// v1.GET("/products/:id", database.GetProductByID)
-	v1.GET("/products/slug/:slug", database.GetProductBySlug)
+	v1.GET("/filter_products", database.FilterProducts) // New endpoint for filtered product queries
+	v1.GET("/get_product_by_slug/:slug", database.GetProductBySlug)
 	v1.GET("/get_product_by_id/:id", database.GetProductByID)
+	v1.POST("/get_similar_products", database.GetSimilarProducts)
 
 	// PROTECTED ROUTES
-
 	protected := v1.Group("/protected")
 	protected.Use(middleware.AuthMiddleware())
 
@@ -58,22 +59,24 @@ func Router() *echo.Echo {
 		protected.POST("/create_product", database.CreateProduct)
 		protected.PATCH("/update_product/:id", database.UpdateProduct)
 		protected.DELETE("/delete_product", database.DeleteProduct)
-		// protected.GET("/delete_image/:id", database.DeleteProductImage)
 
+		// comment routes
 		protected.GET("/verify", database.VerifySession)
 		protected.POST("/add_comment/:id", database.AddComment)
 		protected.GET("/get_comments/:id", database.GetComments)
 		protected.PATCH("/delete_comment", database.DeleteComment)
 
-		// protected.GET("/get_user_comments", database.GetUserComments)
-
 		// Cart routes
-		// protected.GET("/cart", database.GetUserCart)
 		protected.POST("/add_to_cart", database.AddToCart)
 		protected.GET("/get_cart", database.GetUserCart)
 		protected.PATCH("/update_cart", database.UpdateCart)
 		protected.DELETE("/clear_cart", database.ClearCart)
 		protected.DELETE("/remove_from_cart", database.RemoveCartItem)
+
+		// payment routes
+		protected.POST("/checkout", models.InitializeCheckout)
+		protected.GET("/verifyPayment", models.VerifyTransaction)
+
 	}
 
 	return e

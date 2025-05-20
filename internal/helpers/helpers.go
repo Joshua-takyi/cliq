@@ -73,3 +73,28 @@ func CloudinaryInstance(imageId string) (bool, error) {
 	}
 	return true, nil
 }
+
+// TokenizeSearchQuery splits a search query into individual tokens/words
+// to improve search relevance by matching individual terms
+func TokenizeSearchQuery(query string) []string {
+	// Convert query to lowercase for case-insensitive matching
+	query = strings.ToLower(query)
+
+	// Remove special characters and extra spaces
+	// Keep letters, numbers and spaces
+	reg := regexp.MustCompile(`[^a-z0-9\s]`)
+	query = reg.ReplaceAllString(query, " ")
+
+	// Split by whitespace
+	words := strings.Fields(query)
+
+	// Filter out words that are too short (less than 2 characters)
+	filtered := []string{}
+	for _, word := range words {
+		if len(word) >= 2 {
+			filtered = append(filtered, word)
+		}
+	}
+
+	return filtered
+}
